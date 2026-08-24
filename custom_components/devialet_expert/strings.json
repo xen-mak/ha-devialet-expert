@@ -30,7 +30,7 @@
       }
     },
     "error": {
-      "cannot_connect": "No valid Devialet status broadcast was received from this address. Check the address, network routing, and amplifier power.",
+      "cannot_connect": "No decodable Devialet status broadcast was received from this address. Check the address, network routing, and amplifier power.",
       "invalid_volume_range": "The minimum volume must be lower than the maximum volume."
     },
     "abort": {

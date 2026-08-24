@@ -31,6 +31,26 @@ class FakeCommandSocket:
         self.closed = True
 
 
+class FakeStatusSocket:
+    """Replay status broadcasts without opening a UDP port."""
+
+    def __init__(self, responses: list[tuple[bytes, tuple[str, int]]]) -> None:
+        self.responses = responses
+        self.closed = False
+
+    def settimeout(self, _timeout: float) -> None:
+        """Accept the client timeout setting."""
+
+    def recvfrom(self, _size: int) -> tuple[bytes, tuple[str, int]]:
+        """Return a queued broadcast or simulate a receive timeout."""
+        if not self.responses:
+            raise TimeoutError
+        return self.responses.pop(0)
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class DevialetProtocolTestCase(unittest.TestCase):
     """Verify framing details ported from the upstream Devimote implementation."""
 
@@ -68,6 +88,32 @@ class DevialetProtocolTestCase(unittest.TestCase):
         self.assertEqual(status["raw_volume"], 175)
         self.assertEqual(status["volume_db"], -10.0)
         self.assertTrue(status["crc_ok"])
+
+    def test_status_crc_mismatch_is_diagnostic_only(self) -> None:
+        """A bad status CRC is reported but does not make the frame undecodable."""
+        packet = bytearray(self._status_packet())
+        packet[-1] ^= 0xFF
+        status = api.decode_status_packet(bytes(packet), "192.168.1.50")
+        self.assertTrue(status["connected"])
+        self.assertFalse(status["crc_ok"])
+
+    def test_client_accepts_status_with_crc_mismatch(self) -> None:
+        """The receiver follows upstream DeviMote and accepts a decodable bad-CRC frame."""
+        packet = bytearray(self._status_packet())
+        packet[-1] ^= 0xFF
+        sock = FakeStatusSocket([(bytes(packet), ("192.168.1.50", 45454))])
+        getaddrinfo_result = [
+            (api.socket.AF_INET, api.socket.SOCK_DGRAM, 17, "", ("192.168.1.50", 0))
+        ]
+        with (
+            patch.object(api.DevialetClient, "_status_socket", return_value=sock),
+            patch.object(api.socket, "getaddrinfo", return_value=getaddrinfo_result),
+        ):
+            status = api.DevialetClient("192.168.1.50").get_status()
+
+        self.assertTrue(status["connected"])
+        self.assertFalse(status["crc_ok"])
+        self.assertTrue(sock.closed)
 
     def test_invalid_packet_size_is_rejected(self) -> None:
         """Short datagrams cannot be mistaken for amplifier status."""

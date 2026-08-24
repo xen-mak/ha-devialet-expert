@@ -96,6 +96,7 @@ def decode_status_packet(data: bytes, address: str) -> dict[str, object]:
         "raw_volume": data[310],
         "volume_db": raw_volume_to_db(data[310]),
         "connected": True,
+        # Upstream DeviMote records this result but does not reject the status packet.
         "crc_ok": crc16(data[:-2]) == expected_crc,
     }
 
@@ -113,7 +114,7 @@ class DevialetClient:
         timeout: float = DISCOVERY_TIMEOUT_SECONDS,
         max_devices: int = SCAN_MAX_DEVICES,
     ) -> list[dict[str, object]]:
-        """Collect valid Devialet status broadcasts visible on the local network."""
+        """Collect decodable Devialet status broadcasts visible on the local network."""
         discovered: dict[str, dict[str, object]] = {}
         deadline = time.monotonic() + timeout
         try:
@@ -131,8 +132,7 @@ class DevialetClient:
                     status = decode_status_packet(data, addr[0])
                 except DevialetProtocolError:
                     continue
-                if status["crc_ok"]:
-                    discovered[addr[0]] = status
+                discovered[addr[0]] = status
         finally:
             sock.close()
 
@@ -147,7 +147,7 @@ class DevialetClient:
         return sock
 
     def get_status(self, timeout: float = STATUS_TIMEOUT_SECONDS) -> dict[str, object]:
-        """Receive the next valid status broadcast from this configured host."""
+        """Receive the next decodable status broadcast from this configured host."""
         try:
             expected_addresses = {addr[4][0] for addr in socket.getaddrinfo(self.host, None)}
         except socket.gaierror as err:
@@ -175,13 +175,12 @@ class DevialetClient:
                     status = decode_status_packet(data, addr[0])
                 except DevialetProtocolError:
                     continue
-                if status["crc_ok"]:
-                    return status
+                return status
         finally:
             sock.close()
 
         raise DevialetConnectionError(
-            f"No valid Devialet status broadcast received from {self.host}"
+            f"No decodable Devialet status broadcast received from {self.host}"
         )
 
     def set_power(self, powered: bool) -> None:

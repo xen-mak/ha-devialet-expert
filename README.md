@@ -2,86 +2,99 @@
 
 [![Validate HACS integration](https://github.com/xen-mak/devialet-expert-hacs/actions/workflows/validate.yml/badge.svg)](https://github.com/xen-mak/devialet-expert-hacs/actions/workflows/validate.yml)
 
-這是 **Devialet Expert（非 Pro、Core Infinity 之前）**擴大機的本機 Home Assistant `media_player` 自訂整合。它移植自 [DeviMote](https://github.com/gnulabis/devimote) 的逆向 UDP 協定實作，完全在區域網路內運作，不使用雲端帳號、密碼或第三方服務。[1]
+A local Home Assistant `media_player` integration for **Devialet Expert non-Pro amplifiers manufactured before the Core Infinity board**. It is based on the reverse-engineered local UDP protocol implemented by [DeviMote](https://github.com/gnulabis/devimote). The integration does not require a cloud account, password, or external service.[1]
 
-> **相容性範圍：**本專案僅支援 Devimote 已明確支援的 **Devialet Expert non-Pro** 硬體。本整合不應安裝在 Pro 機種或已配備 Core Infinity 板的機種上；這些裝置的控制協定未經本專案驗證。[1]
+> **Compatibility:** This integration supports only the Devialet Expert non-Pro hardware covered by DeviMote. It has not been validated for Pro models or units with a Core Infinity board.[1]
 
-## 功能
+## Features
 
-此整合將每一台擴大機建立為一個 Home Assistant `media_player` 實體。所有實體狀態會由最近的 UDP 狀態廣播快取提供；Home Assistant 的 entity 屬性本身不進行網路 I/O，符合官方 media player 實作模式。[2]
+Each configured amplifier is exposed as one Home Assistant `media_player` entity. Its properties use the latest cached UDP status packet rather than performing network I/O while Home Assistant renders the entity, as recommended by the Home Assistant media player interface.[2]
 
-| 需求 | Home Assistant 行為 | 實作細節 |
+| Requirement | Home Assistant feature | Implementation |
 | --- | --- | --- |
-| 音量與上下限 | `media_player.volume_set` 與音量滑桿 | 以 dB 設定 min/max，滑桿依該範圍正規化為 0–100%；硬體半 dB 解析度 |
-| 靜音／取消靜音 | `media_player.volume_mute` | 傳送明確目標狀態，而非依賴可能過時的 toggle 狀態 |
-| 來源清單與切換 | `media_player.select_source` | 顯示擴大機廣播的啟用輸入名稱；選取時映射回 UDP 通道 index |
-| 電源開／關 | `media_player.turn_on`、`media_player.turn_off` | 對應開機與 standby 的明確命令 |
-| 其他 DeviMote 狀態 | 額外 state attributes 與 diagnostics | 裝置名稱、IP、通道 index、完整來源對照表、dB／raw 音量、CRC 與連線狀態 |
-| 新增擴大機 | 圖形化 Config Flow | 可掃描區域網路中的 UDP 狀態廣播，也可手動輸入 IP／hostname |
+| Volume with limits | `media_player.volume_set` and the standard volume slider | Configurable minimum and maximum dB values; 0.5 dB amplifier resolution |
+| Mute and unmute | `media_player.volume_mute` | Sends an explicit target state instead of a state-dependent toggle |
+| Source list and source selection | `media_player.select_source` | Lists enabled amplifier inputs and maps the selected label to its protocol channel index |
+| Power on and standby | `media_player.turn_on` and `media_player.turn_off` | Sends explicit power-state commands |
+| Additional DeviMote data | State attributes and diagnostics | Device name, IP address, channel index, source map, dB/raw volume, CRC status, and connection status |
+| Add an amplifier | UI configuration flow | Local UDP scan or manual IP address/hostname entry |
 
-## 安裝
+## Install with HACS
 
-本儲存庫採用 HACS 規定的單一整合目錄結構，包含根目錄 `hacs.json` 與 `custom_components/devialet_expert/`；它可作為 **HACS custom repository** 安裝。[3] [4]
+This repository follows the HACS custom-integration layout, including `hacs.json` at the repository root and the integration under `custom_components/devialet_expert/`.[3]
 
-| 步驟 | 操作 |
+| Step | Action |
 | --- | --- |
-| 1 | 在 GitHub 將本專案發佈為**公開**儲存庫 `xen-mak/devialet-expert-hacs`。HACS 只支援公開 GitHub 儲存庫。[4] |
-| 2 | 在 Home Assistant 開啟 **HACS → Integrations → 右上角三點 → Custom repositories**。 |
-| 3 | 貼上 `https://github.com/xen-mak/devialet-expert-hacs`，類型選擇 **Integration**，再按 **Add**。[5] |
-| 4 | 在 HACS 搜尋並下載 **Devialet Expert (non-Pro)**，然後重新啟動 Home Assistant。 |
-| 5 | 前往 **Settings → Devices & services → Add integration**，搜尋 **Devialet Expert (non-Pro)**。 |
+| 1 | Open **HACS → Integrations → the three-dot menu → Custom repositories**. |
+| 2 | Add `https://github.com/xen-mak/devialet-expert-hacs`. |
+| 3 | Select **Integration** as the category and click **Add**.[4] |
+| 4 | Find **Devialet Expert (non-Pro)** in HACS, download it, and restart Home Assistant. |
+| 5 | Go to **Settings → Devices & services → Add integration** and search for **Devialet Expert (non-Pro)**. |
 
-若不使用 HACS，可將 `custom_components/devialet_expert` 複製至 Home Assistant 的 `<config>/custom_components/devialet_expert`，再重新啟動 Home Assistant。
+For a manual installation, copy `custom_components/devialet_expert` into `<Home Assistant config>/custom_components/devialet_expert`, then restart Home Assistant.
 
-## 新增擴大機
+## Add an amplifier
 
-設定流程有兩種方式。Home Assistant 的 config flow 是官方建議的 UI 設定機制；探索結果會要求使用者確認後才建立設定項。[6]
+The configuration flow has two setup paths. Home Assistant configuration flows provide the integration's UI setup and discovery must be confirmed by the user before an entry is created.[5]
 
-| 方式 | 適用情境 | 操作 |
+| Setup path | Use it when | What to do |
 | --- | --- | --- |
-| **掃描區域網路** | Home Assistant 與擴大機在同一個可接收 UDP broadcast 的網段 | 選擇「掃描區域網路」，等待約五秒，再從發現清單選擇名稱與 IP。 |
-| **手動輸入位址** | 掃描未發現裝置、使用固定 DHCP 位址，或網路架構阻擋 broadcast | 選擇「手動輸入位址」，輸入擴大機 IP 或可解析的 hostname。整合會等待該位址送出有效 CRC 的狀態封包。 |
+| **Scan local network** | Home Assistant and the amplifier are on a network where UDP broadcasts can reach the Home Assistant host | Choose **Scan local network**, wait about five seconds, and select the discovered amplifier. |
+| **Enter address manually** | The scan finds no device, the amplifier has a fixed DHCP address, or network routing blocks broadcasts | Choose **Enter address manually**, then enter the amplifier's current IPv4 address or resolvable hostname. |
 
-擴大機會在 UDP **45454** 廣播 512-byte 狀態封包，並在 UDP **45455** 接收控制封包；這是 Devimote 已記錄的本機逆向協定。[1] Home Assistant 主機必須能接收 45454 的 UDP broadcast，並能對擴大機送出 UDP 45455 封包。若使用容器化 Home Assistant，請確認容器網路模式與防火牆沒有阻擋這兩種流量。
+The amplifier broadcasts 512-byte status packets on UDP port **45454** and accepts command packets on UDP port **45455**. This is the local protocol documented by DeviMote.[1] The Home Assistant host must be able to receive UDP broadcasts on port 45454 and send UDP traffic to port 45455 on the amplifier. When Home Assistant runs in a container, check the container network mode and firewall rules.
 
-本協定沒有已驗證的固定序號或 MAC 可作為硬體識別碼，因此本整合不會把可變的 IP 位址冒充成裝置序號。若 DHCP 租約變更，請在該整合的 **Reconfigure** 選項輸入新 IP 或 hostname。
+The observed protocol does not expose a verified immutable serial number or MAC address. The integration therefore does not use an IP address as a fake device serial number. If DHCP changes the amplifier's address, use **Reconfigure** on the integration and enter the new address or hostname.
 
-## 音量限制與 dB 對應
+## CRC policy and connection troubleshooting
 
-在整合的 **Configure** 選項中，可設定「最小音量（dB）」與「最大音量（dB）」。預設值是 **−97.5 dB** 至 **−10.0 dB**，也就是此協定可確認的完整實體範圍。選擇較保守的最大值可避免儀表板、語音助理或自動化把擴大機設得過大聲。
+The upstream DeviMote receiver decodes the status packet and records its CRC result, but does **not** reject a status packet merely because its CRC is not valid.[1] Starting with this release, this integration follows that behavior: **CRC is diagnostic-only for incoming status broadcasts.** A packet with an invalid or unexpected status CRC can still establish the connection, populate state, and complete the configuration flow. The `crc_ok` attribute remains available for troubleshooting.
 
-擴大機狀態封包中的原始音量 byte 會依下式轉換：
+The integration still creates the command-packet CRC required by the upstream protocol when it changes volume, mute, power, or source. Removing the command CRC would depart from the known DeviMote command framing and could cause the amplifier to ignore commands.[1]
+
+| Symptom | Checks to perform |
+| --- | --- |
+| No device appears in the scan | Confirm that Home Assistant and the amplifier share a broadcast-capable network segment. Then use manual setup with the amplifier's IPv4 address. |
+| Manual setup says it cannot connect | Confirm the amplifier is powered, its address is correct, UDP port 45454 reaches the Home Assistant host, and no Docker, VLAN, Wi-Fi isolation, or firewall rule blocks broadcast traffic. |
+| The entity is unavailable after setup | Inspect `connected`, `crc_ok`, and `ip_address` in the entity attributes. A false `crc_ok` no longer blocks the entity; a false `connected` indicates no status datagram was received in the listening window. |
+| Commands have no effect | Confirm the configured address is the amplifier's current address and that UDP port 45455 is reachable. The command CRC is intentionally retained. |
+
+## Volume limits and dB mapping
+
+Open the integration's **Configure** options to choose **Minimum volume (dB)** and **Maximum volume (dB)**. Defaults are **-97.5 dB** through **-10.0 dB**, the full range currently handled by the protocol implementation. Choosing a lower maximum can keep dashboards, voice assistants, and automations from setting an unsafe listening level.
+
+The status packet's raw volume byte is converted as follows:
 
 ```text
 volume_db = (raw_volume - 195) / 2
 ```
 
-`media_player.volume_level` 則是在使用者選擇的 dB 邊界內轉為 0.0–1.0；Home Assistant 官方規格要求此屬性採用該範圍。[2] 擴大機或原廠遙控器在整合外調整音量時，`volume_db` 與 `raw_volume` 額外屬性仍保留真實值；超出使用者 UI 邊界的值會在滑桿端夾至 0% 或 100%。
+`media_player.volume_level` is normalized to 0.0–1.0 within the configured dB boundaries, as required by the Home Assistant media player interface.[2] When the physical remote or amplifier changes volume outside Home Assistant, `volume_db` and `raw_volume` still expose the actual reported value; the Home Assistant slider itself is clamped to 0% or 100% at the configured bounds.
 
-## 狀態、可用性與除錯
+## State attributes and diagnostics
 
-整合每兩秒等待一個最新的狀態廣播。若未收到設定主機送出的有效 CRC 封包，實體會顯示為 **unavailable**，以免將過期資料誤當成目前狀態。有效資料會公開於 state attributes，方便建立進階自動化。
+The integration listens for a recent status broadcast every two seconds. All decoded values are exposed as Home Assistant state attributes for advanced automations.
 
-| Attribute | 說明 |
+| Attribute | Meaning |
 | --- | --- |
-| `device_name`、`ip_address` | 廣播內的裝置名稱與目前回報 IP |
-| `channel_index`、`sources_by_channel` | 目前輸入及 protocol channel 對來源名稱的完整對照 |
-| `volume_db`、`raw_volume` | 實際 dB 音量及原始封包 byte |
-| `crc_ok`、`connected` | 最後一個封包的完整性與連線結果 |
-| `configured_host` | 設定中輸入的 IP／hostname |
-| `volume_min_db`、`volume_max_db` | 套用於 Home Assistant 音量滑桿與寫入命令的範圍 |
+| `device_name`, `ip_address` | Device name and sender address from the latest broadcast |
+| `channel_index`, `sources_by_channel` | Current input and the full protocol-channel-to-source-name mapping |
+| `volume_db`, `raw_volume` | Reported physical volume in dB and its raw packet byte |
+| `crc_ok`, `connected` | Latest packet integrity result and whether a status datagram was received |
+| `configured_host` | Address or hostname entered in the integration configuration |
+| `volume_min_db`, `volume_max_db` | dB limits applied to the Home Assistant slider and write commands |
 
-可從 **Settings → Devices & services → Devialet Expert (non-Pro) → Download diagnostics** 匯出已遮罩主機資訊的診斷快照，用於回報問題。
+Use **Settings → Devices & services → Devialet Expert (non-Pro) → Download diagnostics** to obtain a sanitized support snapshot. The configured and reported host information is redacted.
 
-## 開發、驗證與授權
+## Development, validation, and license
 
-本專案包含不需實體擴大機的協定測試，覆蓋 CRC-16/CCITT-FALSE、狀態封包解碼、明確電源控制，以及第 8–14 來源通道的特殊編碼。請執行：
+The repository includes protocol tests that do not need a physical amplifier. They cover CRC-16/CCITT-FALSE, status decoding, explicit power commands, and high source-channel encoding.
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-`.github/workflows/validate.yml` 會使用 HACS 官方驗證 action 檢查儲存庫結構。[7] 協定實作衍生自 GPL-3.0-or-later 的 Devimote，因此本專案亦採用 **GPL-3.0-or-later**；詳見 [LICENSE](LICENSE)。
+The HACS validation workflow in `.github/workflows/validate.yml` checks the repository structure using the official HACS action.[6] The protocol implementation is derived from GPL-3.0-or-later DeviMote code, so this project is distributed under **GPL-3.0-or-later**. See [LICENSE](LICENSE).
 
 ## References
 
@@ -91,10 +104,8 @@ python3 -m unittest discover -s tests -v
 
 [3] [HACS — Publishing integrations](https://www.hacs.xyz/docs/publish/integration/)
 
-[4] [HACS — General publishing requirements](https://www.hacs.xyz/docs/publish/start/)
+[4] [HACS — Custom repositories](https://www.hacs.xyz/docs/faq/custom_repositories/)
 
-[5] [HACS — Custom repositories](https://www.hacs.xyz/docs/faq/custom_repositories/)
+[5] [Home Assistant Developer Docs — Config flow](https://developers.home-assistant.io/docs/core/integration/config_flow/)
 
-[6] [Home Assistant Developer Docs — Config flow](https://developers.home-assistant.io/docs/core/integration/config_flow/)
-
-[7] [HACS — GitHub Action validation](https://www.hacs.xyz/docs/publish/action/)
+[6] [HACS — GitHub Action validation](https://www.hacs.xyz/docs/publish/action/)

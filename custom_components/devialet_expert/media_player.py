@@ -78,12 +78,8 @@ class DevialetExpertMediaPlayer(
 
     @property
     def available(self) -> bool:
-        """Report unavailable if there is no recent, CRC-valid local broadcast."""
-        return bool(
-            super().available
-            and self._status.get("connected")
-            and self._status.get("crc_ok")
-        )
+        """Report unavailable only when no recent local status broadcast was received."""
+        return bool(super().available and self._status.get("connected"))
 
     @property
     def device_info(self) -> DeviceInfo:
