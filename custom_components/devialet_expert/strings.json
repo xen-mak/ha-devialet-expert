@@ -1,0 +1,55 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "menu_options": {
+          "scan": "Scan local network",
+          "manual": "Enter address manually"
+        }
+      },
+      "scan": {
+        "title": "Select Devialet Expert amplifier",
+        "description": "The integration listened for local Devialet Expert status broadcasts. Select the amplifier to add.",
+        "data": {
+          "host": "Amplifier"
+        }
+      },
+      "manual": {
+        "title": "Connect to Devialet Expert",
+        "description": "Enter the IP address or hostname of a Devialet Expert non-Pro amplifier. It must be reachable on the same local network and broadcasting status packets.",
+        "data": {
+          "host": "IP address or hostname"
+        }
+      },
+      "reconfigure": {
+        "title": "Update Devialet Expert address",
+        "description": "Enter the amplifier's current IP address or hostname. This is useful after a DHCP address change.",
+        "data": {
+          "host": "IP address or hostname"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No valid Devialet status broadcast was received from this address. Check the address, network routing, and amplifier power.",
+      "invalid_volume_range": "The minimum volume must be lower than the maximum volume."
+    },
+    "abort": {
+      "no_devices_found": "No Devialet Expert non-Pro status broadcasts were found. Use manual setup if the amplifier is on another network segment."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Volume limits",
+        "description": "Set the dB range exposed through the Home Assistant volume slider. The amplifier always retains its physical range of -97.5 dB to -10 dB.",
+        "data": {
+          "volume_min_db": "Minimum volume (dB)",
+          "volume_max_db": "Maximum volume (dB)"
+        }
+      }
+    },
+    "error": {
+      "invalid_volume_range": "The minimum volume must be lower than the maximum volume."
+    }
+  }
+}

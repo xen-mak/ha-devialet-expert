@@ -1,0 +1,55 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "menu_options": {
+          "scan": "掃描區域網路",
+          "manual": "手動輸入位址"
+        }
+      },
+      "scan": {
+        "title": "選擇 Devialet Expert 擴大機",
+        "description": "整合已監聽本機 Devialet Expert 的狀態廣播。請選擇要新增的擴大機。",
+        "data": {
+          "host": "擴大機"
+        }
+      },
+      "manual": {
+        "title": "連線至 Devialet Expert",
+        "description": "請輸入 Devialet Expert 非 Pro 擴大機的 IP 位址或主機名稱。它必須位於相同區域網路，並正在廣播狀態封包。",
+        "data": {
+          "host": "IP 位址或主機名稱"
+        }
+      },
+      "reconfigure": {
+        "title": "更新 Devialet Expert 位址",
+        "description": "請輸入擴大機目前的 IP 位址或主機名稱。DHCP 位址變更後，可透過此處更新。",
+        "data": {
+          "host": "IP 位址或主機名稱"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "此位址未傳回有效的 Devialet 狀態廣播。請確認位址、網路路由及擴大機電源。",
+      "invalid_volume_range": "最小音量必須小於最大音量。"
+    },
+    "abort": {
+      "no_devices_found": "找不到 Devialet Expert 非 Pro 的狀態廣播。若擴大機位於另一個網路區段，請使用手動設定。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "音量限制",
+        "description": "設定 Home Assistant 音量滑桿可用的 dB 範圍。擴大機本身仍保有 -97.5 dB 至 -10 dB 的實體範圍。",
+        "data": {
+          "volume_min_db": "最小音量（dB）",
+          "volume_max_db": "最大音量（dB）"
+        }
+      }
+    },
+    "error": {
+      "invalid_volume_range": "最小音量必須小於最大音量。"
+    }
+  }
+}
