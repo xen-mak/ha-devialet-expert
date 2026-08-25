@@ -5,7 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  # hacs/action lists releases through the GitHub API, which needs more
+  # than the metadata-only token that an empty permissions block grants.
+  contents: read
 
 jobs:
   validate-hacs:
