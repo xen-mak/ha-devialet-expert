@@ -10,7 +10,7 @@ What you find here is that work rewritten as a Home Assistant integration. Since
 
 ## About
 
-A local Home Assistant `media_player` integration for **Devialet Expert non-Pro amplifiers manufactured before the Core Infinity board**. It needs no cloud account, password, or external service — everything happens over UDP on your own network.
+A local Home Assistant `media_player` integration for **Devialet Expert amplifiers manufactured before the Core Infinity board**.
 
 > **Compatibility:** This integration supports only the Devialet Expert non-Pro hardware covered by DeviMote. It has not been validated for Pro models or units with a Core Infinity board.[1]
 
@@ -24,11 +24,9 @@ Each configured amplifier is exposed as one Home Assistant `media_player` entity
 | Mute and unmute | `media_player.volume_mute` | Sends an explicit target state instead of a state-dependent toggle |
 | Source list and source selection | `media_player.select_source` | Lists enabled amplifier inputs and maps the selected label to its protocol channel index |
 | Power on and standby | `media_player.turn_on` and `media_player.turn_off` | Sends explicit power-state commands |
-| Add an amplifier | UI configuration flow | One dialog combining the local UDP scan, manual IP address/hostname entry, and the volume limits |
+
 
 ## Install with HACS
-
-This repository follows the HACS custom-integration layout, including `hacs.json` at the repository root and the integration under `custom_components/devialet_expert/`.[2]
 
 | Step | Action |
 | --- | --- |
@@ -42,13 +40,46 @@ For a manual installation, copy `custom_components/devialet_expert` into `<Home 
 
 ## Live updates
 
-The amplifier announces its complete state — power, volume, mute, and selected input — by broadcasting a status packet on UDP port 45454 about ten times a second. Two design choices turn that stream into a responsive entity.
+The amplifier announces its complete state — power, volume, mute, and selected input — by broadcasting a status packet on UDP port 45454 at 10Hz.
 
-**A persistent UDP listener.** The integration opens one socket when the config entry loads and keeps it open for the lifetime of the entry, decoding each datagram the moment it arrives. Nothing is scheduled and nothing is requested; the amplifier is already talking, so the integration simply listens. Turning the physical volume knob, pressing the handset, or changing the input on the front panel reaches Home Assistant in roughly a tenth of a second. This is why the integration declares itself `local_push`.
+```mermaid
+flowchart TD
+    AMP["Devialet Expert<br/>broadcasts full state<br/>UDP 45454 at ~10 Hz"]
+    SRC{"from the<br/>configured host?"}
+    DEC{"decodes as a<br/>status frame?"}
+    TIMER["restart the<br/>10 s idle timer"]
+    CMP{"differs from the last<br/>published state?"}
+    RATE{"published within<br/>the last 0.25 s?"}
+    HOLD["hold as pending<br/>newest value wins"]
+    PUB["publish"]
+    HA["entity state<br/>automations<br/>recorder"]
+    IDLE["report idle<br/>stays available<br/>keeps last values"]
+    DROP["discard"]
+    SKIP["nothing to do"]
 
-**Publishing only on change.** Most of those ten packets per second repeat the previous state verbatim. Each decoded packet is compared against the last one, and the entity is republished only when a value actually differs. Home Assistant's state machine, your automations, and the recorder therefore see one update per real change — a volume sweep produces a smooth series of updates, while an idle amplifier produces none at all.
+    AMP -->|datagram| SRC
+    SRC -->|no| DROP
+    SRC -->|yes| DEC
+    DEC -->|no| DROP
+    DEC -->|yes| TIMER
+    TIMER --> CMP
+    CMP -->|"no (most packets)"| SKIP
+    CMP -->|yes| RATE
+    RATE -->|no| PUB
+    RATE -->|yes| HOLD
+    HOLD -.->|"trailing timer fires"| PUB
+    PUB --> HA
+    TIMER -.->|"no frame for 10 s"| IDLE
+    IDLE -.->|"next frame arrives"| PUB
+```
 
-Because state arrives continuously rather than on request, silence is meaningful in itself: if no decodable broadcast arrives for ten seconds the entity reports `idle`. It stays available and keeps its last known values — nothing has failed, the amplifier has simply stopped announcing itself — and it returns to its real state as soon as packets resume.
+**A persistent UDP listener.** The integration opens one socket when the config entry loads and keeps it open for the lifetime of the entry, decoding each datagram the moment it arrives. Nothing is scheduled and nothing is requested; the amplifier is already talking, so the integration simply listens. Turning the physical volume knob or changing the input on the front panel reaches Home Assistant in roughly a tenth of a second. This is why the integration declares itself `local_push`.
+
+**Publishing only on change.** Most of those ten packets per second repeat the previous state verbatim. Each decoded packet is compared against the last one, and the entity is republished only when a value actually differs. Home Assistant's state machine, your automations, and the recorder therefore see one update per real change.
+
+**A rate limit on bursts.** Turning the volume knob does produce a genuine change ten times a second, and every published change re-renders each dashboard template subscribed to the entity. Changes are therefore coalesced to at most one every 0.25 seconds: the first change in a burst publishes immediately so the entity still reacts at once, later ones replace a pending value, and a trailing timer publishes the newest — so the value you settle on is always the value Home Assistant ends up with. Adjust `MIN_PUBLISH_INTERVAL_SECONDS` in `const.py` if your dashboards want a gentler or livelier rate.
+
+**Idle when the amplifier goes quiet.** If no decodable broadcast arrives for 10 seconds the entity reports `idle`. It stays available and keeps its last known values — and it returns to its real state as soon as packets resume.
 
 ## Volume limits
 

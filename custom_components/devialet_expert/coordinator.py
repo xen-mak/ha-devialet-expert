@@ -22,7 +22,7 @@ from .api import (
     open_status_socket,
     resolve_addresses,
 )
-from .const import DOMAIN, IDLE_AFTER_SECONDS
+from .const import DOMAIN, IDLE_AFTER_SECONDS, MIN_PUBLISH_INTERVAL_SECONDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +42,9 @@ class DevialetDataUpdateCoordinator(DataUpdateCoordinator[dict[str, object]]):
         self._transport: asyncio.DatagramTransport | None = None
         self._expected_addresses: set[str] = set()
         self._cancel_watchdog: CALLBACK_TYPE | None = None
+        self._cancel_publish: CALLBACK_TYPE | None = None
+        self._pending_status: dict[str, object] | None = None
+        self._next_publish_at = 0.0
         self.silent = False
 
     async def _async_update_data(self) -> dict[str, object]:
@@ -76,6 +79,10 @@ class DevialetDataUpdateCoordinator(DataUpdateCoordinator[dict[str, object]]):
         if self._cancel_watchdog is not None:
             self._cancel_watchdog()
             self._cancel_watchdog = None
+        if self._cancel_publish is not None:
+            self._cancel_publish()
+            self._cancel_publish = None
+        self._pending_status = None
         if self._transport is not None:
             self._transport.close()
             self._transport = None
@@ -101,6 +108,37 @@ class DevialetDataUpdateCoordinator(DataUpdateCoordinator[dict[str, object]]):
         # must always publish, so the entity stops reporting idle.
         if not was_silent and self.last_update_success and status == self.data:
             return
+        self._async_publish(status)
+
+    @callback
+    def _async_publish(self, status: dict[str, object]) -> None:
+        """Publish a changed status, coalescing bursts to a sustainable rate.
+
+        The first change in a burst goes out immediately so the entity still
+        reacts at once. Anything arriving inside the interval replaces the
+        pending value, and a trailing timer publishes the newest one, so the
+        value settled on is always the value Home Assistant ends up with.
+        """
+        now = self.hass.loop.time()
+        if now >= self._next_publish_at:
+            self._next_publish_at = now + MIN_PUBLISH_INTERVAL_SECONDS
+            self.async_set_updated_data(status)
+            return
+
+        self._pending_status = status
+        if self._cancel_publish is None:
+            self._cancel_publish = async_call_later(
+                self.hass, self._next_publish_at - now, self._async_publish_pending
+            )
+
+    @callback
+    def _async_publish_pending(self, _now: Any) -> None:
+        """Publish the newest status held back by the rate limit."""
+        self._cancel_publish = None
+        status, self._pending_status = self._pending_status, None
+        if status is None:
+            return
+        self._next_publish_at = self.hass.loop.time() + MIN_PUBLISH_INTERVAL_SECONDS
         self.async_set_updated_data(status)
 
     @callback

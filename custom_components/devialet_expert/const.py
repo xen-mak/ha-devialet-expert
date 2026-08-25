@@ -43,6 +43,11 @@ SCAN_MAX_DEVICES: Final = 20
 # integration is working and simply has nothing to report, which is different
 # from being unable to reach it at all.
 IDLE_AFTER_SECONDS: Final = 10.0
+# Turning the volume knob changes the reported value about ten times a second,
+# and every published change re-renders each dashboard template subscribed to
+# the entity. Coalescing bursts to this interval keeps the entity visibly live
+# while sparing slow websocket clients. Raise it if dashboards struggle.
+MIN_PUBLISH_INTERVAL_SECONDS: Final = 0.25
 
 MANUFACTURER: Final = "Devialet"
 MODEL: Final = "Expert (non-Pro)"
