@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .api import DevialetClient, DevialetError
-from .const import DOMAIN, PLATFORMS
+from .const import PLATFORMS
 from .coordinator import DevialetDataUpdateCoordinator
 
 

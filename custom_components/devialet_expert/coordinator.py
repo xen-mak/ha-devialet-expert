@@ -22,7 +22,7 @@ from .api import (
     open_status_socket,
     resolve_addresses,
 )
-from .const import DOMAIN, UNAVAILABLE_AFTER_SECONDS
+from .const import DOMAIN, IDLE_AFTER_SECONDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ class DevialetDataUpdateCoordinator(DataUpdateCoordinator[dict[str, object]]):
         self._transport: asyncio.DatagramTransport | None = None
         self._expected_addresses: set[str] = set()
         self._cancel_watchdog: CALLBACK_TYPE | None = None
+        self.silent = False
 
     async def _async_update_data(self) -> dict[str, object]:
         """Fetch one status packet, used only for the setup-time connectivity check."""
@@ -91,34 +92,44 @@ class DevialetDataUpdateCoordinator(DataUpdateCoordinator[dict[str, object]]):
             return
 
         self._schedule_watchdog()
+        was_silent = self.silent
+        self.silent = False
 
         # At ~10 Hz most packets repeat the previous state verbatim. Publishing
         # only genuine changes keeps the entity responsive without waking every
-        # state listener ten times a second. A packet arriving after a failure
-        # must always publish, so the entity leaves the unavailable state.
-        if self.last_update_success and status == self.data:
+        # state listener ten times a second. The first packet after a silence
+        # must always publish, so the entity stops reporting idle.
+        if not was_silent and self.last_update_success and status == self.data:
             return
         self.async_set_updated_data(status)
 
     @callback
     def _schedule_watchdog(self) -> None:
-        """Restart the countdown that marks the amplifier unavailable when silent."""
+        """Restart the countdown after which the amplifier is reported idle."""
         if self._cancel_watchdog is not None:
             self._cancel_watchdog()
         self._cancel_watchdog = async_call_later(
-            self.hass, UNAVAILABLE_AFTER_SECONDS, self._async_handle_silence
+            self.hass, IDLE_AFTER_SECONDS, self._async_handle_silence
         )
 
     @callback
     def _async_handle_silence(self, _now: Any) -> None:
-        """Mark the amplifier unavailable after a spell with no status broadcast."""
+        """Report idle after a spell with no status broadcast.
+
+        The coordinator is deliberately not put into an error state. Nothing has
+        failed: the listener is healthy and the amplifier has simply stopped
+        announcing itself, so the entity stays available and reports idle.
+        """
         self._cancel_watchdog = None
-        self.async_set_update_error(
-            DevialetConnectionError(
-                f"No status broadcast from {self.client.host} in "
-                f"{UNAVAILABLE_AFTER_SECONDS:.0f} seconds"
-            )
+        if self.silent:
+            return
+        _LOGGER.debug(
+            "No status broadcast from %s in %.0f seconds; reporting idle",
+            self.client.host,
+            IDLE_AFTER_SECONDS,
         )
+        self.silent = True
+        self.async_update_listeners()
 
     async def async_execute(self, method_name: str, *args: Any) -> None:
         """Run a named synchronous protocol command.

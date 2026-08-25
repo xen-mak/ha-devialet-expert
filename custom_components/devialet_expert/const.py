@@ -38,9 +38,11 @@ COMMAND_PACKET_SIZE: Final = 142
 STATUS_TIMEOUT_SECONDS: Final = 2.0
 DISCOVERY_TIMEOUT_SECONDS: Final = 2.0
 SCAN_MAX_DEVICES: Final = 20
-# The amplifier broadcasts at roughly 10 Hz, so state arrives by push. Entities
-# go unavailable only after this long without a single decodable datagram.
-UNAVAILABLE_AFTER_SECONDS: Final = 10.0
+# The amplifier broadcasts at roughly 10 Hz, so state arrives by push. After
+# this long without a single decodable datagram the entity reports idle: the
+# integration is working and simply has nothing to report, which is different
+# from being unable to reach it at all.
+IDLE_AFTER_SECONDS: Final = 10.0
 
 MANUFACTURER: Final = "Devialet"
 MODEL: Final = "Expert (non-Pro)"

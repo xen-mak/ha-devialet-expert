@@ -2,7 +2,7 @@
 
 [![Validate HACS integration](https://github.com/xen-mak/ha-devialet-expert/actions/workflows/validate.yml/badge.svg)](https://github.com/xen-mak/ha-devialet-expert/actions/workflows/validate.yml)
 
-## Credit where it is due
+## This is a rewrite of the python version of Devimote by @gnulabis
 
 This repository is a rewrite of [**DeviMote**](https://github.com/gnulabis/devimote), the original Python implementation by [**@gnulabis**](https://github.com/gnulabis).[1] Devialet publishes no documentation for this protocol — every byte offset, every command opcode, and the volume encoding were worked out by reverse-engineering the UDP traffic with Wireshark. That is the hard part, and it was already done.
 
@@ -48,7 +48,7 @@ The amplifier announces its complete state — power, volume, mute, and selected
 
 **Publishing only on change.** Most of those ten packets per second repeat the previous state verbatim. Each decoded packet is compared against the last one, and the entity is republished only when a value actually differs. Home Assistant's state machine, your automations, and the recorder therefore see one update per real change — a volume sweep produces a smooth series of updates, while an idle amplifier produces none at all.
 
-Because state arrives continuously rather than on request, availability is tracked the same way: if no decodable broadcast arrives for ten seconds the entity becomes `unavailable`, and it recovers on its own as soon as packets resume.
+Because state arrives continuously rather than on request, silence is meaningful in itself: if no decodable broadcast arrives for ten seconds the entity reports `idle`. It stays available and keeps its last known values — nothing has failed, the amplifier has simply stopped announcing itself — and it returns to its real state as soon as packets resume.
 
 ## Volume limits
 

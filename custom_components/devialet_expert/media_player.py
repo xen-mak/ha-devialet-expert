@@ -77,8 +77,12 @@ class DevialetExpertMediaPlayer(
 
     @property
     def available(self) -> bool:
-        """Report unavailable only when no recent local status broadcast was received."""
-        return bool(super().available and self._status.get("connected"))
+        """Report available whenever the listener is running.
+
+        A silent amplifier is reported through the state as idle rather than by
+        making the entity unavailable, which would hide its last known values.
+        """
+        return super().available
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -93,6 +97,8 @@ class DevialetExpertMediaPlayer(
     @property
     def state(self) -> MediaPlayerState:
         """Map the physical power state to Home Assistant's media player state."""
+        if self.coordinator.silent:
+            return MediaPlayerState.IDLE
         return (
             MediaPlayerState.ON
             if bool(self._status.get("power"))
@@ -178,7 +184,7 @@ class DevialetExpertMediaPlayer(
             "ip_address": self._status.get("ip"),
             "volume_db": self._status.get("volume_db"),
             "raw_volume": self._status.get("raw_volume"),
-            "connected": self._status.get("connected"),
+            "connected": not self.coordinator.silent,
             "configured_host": self._entry.data[CONF_HOST],
             "volume_min_db": self._volume_min_db,
             "volume_max_db": self._volume_max_db,
