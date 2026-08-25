@@ -20,7 +20,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    ATTRIBUTION,
     CONF_VOLUME_MAX_DB,
     CONF_VOLUME_MIN_DB,
     DEFAULT_VOLUME_MAX_DB,
@@ -168,21 +167,17 @@ class DevialetExpertMediaPlayer(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose all non-sensitive status fields decoded by the Devimote protocol."""
-        channels = self._status.get("ch_list", {})
+        """Expose the decoded status fields that are useful in automations.
+
+        The active input and the list of inputs are already carried by the
+        standard ``source`` and ``source_list`` properties, so the raw protocol
+        channel numbering is not repeated here.
+        """
         return {
-            "attribution": ATTRIBUTION,
             "device_name": self._status.get("dev_name"),
             "ip_address": self._status.get("ip"),
-            "channel_index": self._status.get("channel"),
-            "sources_by_channel": {
-                str(channel): name for channel, name in dict(channels).items()
-            }
-            if isinstance(channels, Mapping)
-            else {},
             "volume_db": self._status.get("volume_db"),
             "raw_volume": self._status.get("raw_volume"),
-            "crc_ok": self._status.get("crc_ok"),
             "connected": self._status.get("connected"),
             "configured_host": self._entry.data[CONF_HOST],
             "volume_min_db": self._volume_min_db,

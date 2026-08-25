@@ -8,6 +8,7 @@ implementation self-contained so Home Assistant can call it in its executor.
 from __future__ import annotations
 
 import binascii
+import logging
 import math
 import socket
 import struct
@@ -20,13 +21,17 @@ from .const import (
     DISCOVERY_TIMEOUT_SECONDS,
     HARDWARE_VOLUME_MAX_DB,
     HARDWARE_VOLUME_MIN_DB,
+    RECEIVE_BUFFER_SIZE,
     SCAN_MAX_DEVICES,
+    STATUS_PACKET_MIN_SIZE,
     STATUS_PACKET_SIZE,
     STATUS_TIMEOUT_SECONDS,
     UDP_PORT_COMMAND,
     UDP_PORT_STATUS,
     VOLUME_STEP_DB,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 _COMMAND_HEADER: Final = (0x44, 0x72)
 
@@ -72,18 +77,28 @@ def _decode_text(value: bytes) -> str:
     return value.decode("utf-8", errors="replace").rstrip("\x00 ")
 
 
+def _channel_is_enabled(flag: int) -> bool:
+    """Report whether a channel's ASCII enabled-flag byte marks it as selectable.
+
+    The flag is not limited to ``0``/``1``: an Expert 200 reports ``4`` for its
+    phono input. Upstream DeviMote treats every non-zero digit as enabled.
+    """
+    character = chr(flag)
+    return character.isdigit() and character != "0"
+
+
 def decode_status_packet(data: bytes, address: str) -> dict[str, object]:
-    """Decode a 512-byte Devialet status packet into Home Assistant-ready data."""
-    if len(data) != STATUS_PACKET_SIZE:
+    """Decode a Devialet status packet into Home Assistant-ready data."""
+    if len(data) < STATUS_PACKET_MIN_SIZE:
         raise DevialetProtocolError(
-            f"Expected {STATUS_PACKET_SIZE}-byte status packet, received {len(data)} bytes"
+            f"Expected at least {STATUS_PACKET_MIN_SIZE} status bytes, "
+            f"received {len(data)} bytes"
         )
 
-    expected_crc = struct.unpack(">H", data[-2:])[0]
     channel_list: dict[int, str] = {}
     for index in range(15):
         offset = 52 + index * 17
-        if data[offset] == ord("1"):
+        if _channel_is_enabled(data[offset]):
             channel_list[index] = _decode_text(data[offset + 1 : offset + 17])
 
     return {
@@ -97,8 +112,37 @@ def decode_status_packet(data: bytes, address: str) -> dict[str, object]:
         "volume_db": raw_volume_to_db(data[310]),
         "connected": True,
         # Upstream DeviMote records this result but does not reject the status packet.
-        "crc_ok": crc16(data[:-2]) == expected_crc,
+        # Only the canonical 512-byte frame is known to end in this checksum, so
+        # shorter firmware variants report ``None`` rather than a bogus failure.
+        "crc_ok": (
+            crc16(data[:-2]) == struct.unpack(">H", data[-2:])[0]
+            if len(data) == STATUS_PACKET_SIZE
+            else None
+        ),
     }
+
+
+def open_status_socket() -> socket.socket:
+    """Open a reusable socket bound to the amplifier's broadcast status port.
+
+    ``SO_REUSEADDR`` alone is deliberate: Linux hands every socket bound to the
+    port its own copy of a broadcast datagram, so a config flow can listen while
+    a configured entry's push listener already holds the same port. Adding
+    ``SO_REUSEPORT`` would instead group the sockets and hand each datagram to
+    only one of them.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("", UDP_PORT_STATUS))
+    return sock
+
+
+def resolve_addresses(host: str) -> set[str]:
+    """Resolve ``host`` to the set of addresses its datagrams may originate from."""
+    try:
+        return {addr[4][0] for addr in socket.getaddrinfo(host, None)}
+    except socket.gaierror as err:
+        raise DevialetConnectionError(f"Cannot resolve {host}") from err
 
 
 class DevialetClient:
@@ -118,19 +162,20 @@ class DevialetClient:
         discovered: dict[str, dict[str, object]] = {}
         deadline = time.monotonic() + timeout
         try:
-            sock = DevialetClient._status_socket()
+            sock = open_status_socket()
         except OSError:
             return []
         try:
             while time.monotonic() < deadline and len(discovered) < max_devices:
                 sock.settimeout(max(0.05, deadline - time.monotonic()))
                 try:
-                    data, addr = sock.recvfrom(STATUS_PACKET_SIZE)
+                    data, addr = sock.recvfrom(RECEIVE_BUFFER_SIZE)
                 except TimeoutError:
                     break
                 try:
                     status = decode_status_packet(data, addr[0])
-                except DevialetProtocolError:
+                except DevialetProtocolError as err:
+                    _LOGGER.debug("Ignoring datagram from %s: %s", addr[0], err)
                     continue
                 discovered[addr[0]] = status
         finally:
@@ -138,24 +183,14 @@ class DevialetClient:
 
         return list(discovered.values())
 
-    @staticmethod
-    def _status_socket() -> socket.socket:
-        """Open a reusable socket for the amplifier's broadcast status port."""
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("", UDP_PORT_STATUS))
-        return sock
 
     def get_status(self, timeout: float = STATUS_TIMEOUT_SECONDS) -> dict[str, object]:
         """Receive the next decodable status broadcast from this configured host."""
-        try:
-            expected_addresses = {addr[4][0] for addr in socket.getaddrinfo(self.host, None)}
-        except socket.gaierror as err:
-            raise DevialetConnectionError(f"Cannot resolve {self.host}") from err
+        expected_addresses = resolve_addresses(self.host)
 
         deadline = time.monotonic() + timeout
         try:
-            sock = self._status_socket()
+            sock = open_status_socket()
         except OSError as err:
             raise DevialetConnectionError(
                 f"Unable to listen for Devialet status broadcasts on UDP {UDP_PORT_STATUS}"
@@ -164,16 +199,22 @@ class DevialetClient:
             while time.monotonic() < deadline:
                 sock.settimeout(max(0.05, deadline - time.monotonic()))
                 try:
-                    data, addr = sock.recvfrom(STATUS_PACKET_SIZE)
+                    data, addr = sock.recvfrom(RECEIVE_BUFFER_SIZE)
                 except TimeoutError as err:
                     raise DevialetConnectionError(
                         f"No Devialet status broadcast received from {self.host}"
                     ) from err
                 if addr[0] not in expected_addresses:
+                    _LOGGER.debug(
+                        "Ignoring status broadcast from %s while waiting for %s",
+                        addr[0],
+                        self.host,
+                    )
                     continue
                 try:
                     status = decode_status_packet(data, addr[0])
-                except DevialetProtocolError:
+                except DevialetProtocolError as err:
+                    _LOGGER.debug("Undecodable datagram from %s: %s", addr[0], err)
                     continue
                 return status
         finally:

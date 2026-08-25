@@ -7,7 +7,7 @@ from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .api import DevialetClient
+from .api import DevialetClient, DevialetError
 from .const import DOMAIN, PLATFORMS
 from .coordinator import DevialetDataUpdateCoordinator
 
@@ -25,6 +25,12 @@ async def async_setup_entry(
 
     if not coordinator.last_update_success:
         raise ConfigEntryNotReady
+
+    try:
+        await coordinator.async_start_listening()
+    except DevialetError as err:
+        raise ConfigEntryNotReady(str(err)) from err
+    entry.async_on_unload(coordinator.async_stop_listening)
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

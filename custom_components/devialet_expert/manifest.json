@@ -1,12 +1,14 @@
 {
   "domain": "devialet_expert",
-  "name": "Devialet Expert (non-Pro)",
-  "codeowners": ["@xen-mak"],
+  "name": "Devialet Expert",
+  "codeowners": [
+    "@xen-mak"
+  ],
   "config_flow": true,
-  "documentation": "https://github.com/xen-mak/devialet-expert-hacs",
+  "documentation": "https://github.com/xen-mak/ha-devialet-expert",
   "integration_type": "device",
-  "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/xen-mak/devialet-expert-hacs/issues",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/xen-mak/ha-devialet-expert/issues",
   "requirements": [],
-  "version": "0.1.1"
+  "version": "0.4.0"
 }
